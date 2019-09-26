@@ -12,8 +12,10 @@ class Admin extends StatefulWidget {
 
 class _AdminState extends State<Admin> {
   Page _selectedPage = Page.dashboard;
+
   MaterialColor active = Colors.red;
   MaterialColor notActive = Colors.grey;
+
   TextEditingController categoryController = TextEditingController();
   TextEditingController brandController = TextEditingController();
   GlobalKey<FormState> _categoryFormKey = GlobalKey();
