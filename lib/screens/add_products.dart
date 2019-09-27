@@ -1,9 +1,16 @@
+import 'dart:io';
+
 import 'package:admin_flutter_app/db/brand.dart';
 import 'package:admin_flutter_app/db/category.dart';
+import 'package:admin_flutter_app/db/product.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_typeahead/flutter_typeahead.dart';
-
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:uuid/uuid.dart';
 
 class AddProduct extends StatefulWidget {
   @override
@@ -20,6 +27,7 @@ class _AddProductState extends State<AddProduct>
   GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   TextEditingController _name = TextEditingController();
   TextEditingController _quantity = TextEditingController();
+  TextEditingController _price = TextEditingController();
 
   List<DocumentSnapshot> brands = <DocumentSnapshot>[];
   List<DocumentSnapshot> categories = <DocumentSnapshot>[];
@@ -32,8 +40,13 @@ class _AddProductState extends State<AddProduct>
 
   CategoryService _categoryService = CategoryService();
   BrandService _brandService = BrandService();
+  ProductService _productService = ProductService();
 
   List<String> selectedSizes = <String>[];
+
+  List<File> _images = <File>[null, null, null];
+
+  bool isLoading = false;
   @override
   void initState() {
     // TODO: implement initState
@@ -49,39 +62,46 @@ class _AddProductState extends State<AddProduct>
       appBar: buildAppBar(),
       body: Form(
         key: _formKey,
-        child: Column(
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                buildExpanded(),
-                buildExpanded(),
-                buildExpanded(),
-              ],
-            ),
-            buildNameTextField('Product Name.', TextInputType.text, _name),
-            Row(
-              children: <Widget>[
-                buildSelector('Category : ', categoriesList, _currentCategory, changeSelectedCategory),
-                buildSelector('Brand    : ', brandsList, _currentBrand, changeSelectedBrand),
-              ],
-            ),
-            buildNameTextField('Quantity.', TextInputType.numberWithOptions(), _quantity),
-            Text('Available Sizes', style: TextStyle(color: red, fontWeight: FontWeight.bold),),
-            Row(
-              children: <Widget>[
-                buildCheckSize('XS'), Text('XS'),
-                buildCheckSize('S'), Text('S'),
-                buildCheckSize('M'), Text('M'),
-                buildCheckSize('L'), Text('L'),
-                buildCheckSize('XL'), Text('XL'),
-                buildCheckSize('XXL'), Text('XXL'),
-              ],
-            ),
-            buildAddButton()
-          ],
+        child: SingleChildScrollView(
+          child: isLoading? CircularProgressIndicator(): Column(
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  buildExpanded(0),
+                  buildExpanded(1),
+                  buildExpanded(2),
+                ],
+              ),
+              buildNameTextField('Product Name.', TextInputType.text, _name),
+              Row(
+                children: <Widget>[
+                  buildSelector('Category : ', categoriesList, _currentCategory, changeSelectedCategory),
+                  buildSelector('Brand    : ', brandsList, _currentBrand, changeSelectedBrand),
+                ],
+              ),
+              buildNameTextField('Quantity.', TextInputType.numberWithOptions(), _quantity),
+              buildNameTextField('Price.', TextInputType.numberWithOptions(), _price),
+              Text('Available Sizes', style: TextStyle(color: red, fontWeight: FontWeight.bold),),
+              buildSizes(),
+              buildAddButton()
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Row buildSizes() {
+    return Row(
+            children: <Widget>[
+              buildCheckSize('XS'), Text('XS'),
+              buildCheckSize('S'), Text('S'),
+              buildCheckSize('M'), Text('M'),
+              buildCheckSize('L'), Text('L'),
+              buildCheckSize('XL'), Text('XL'),
+              buildCheckSize('XXL'), Text('XXL'),
+            ],
+          );
   }
 
   Checkbox buildCheckSize(String size) => Checkbox(value: selectedSizes.contains(size), onChanged: (value)=>changeSelectedSize(size), activeColor: red,);
@@ -91,7 +111,7 @@ class _AddProductState extends State<AddProduct>
             color: red,
             textColor: white,
             child: Text('Add product'),
-            onPressed: (){},
+            onPressed: _validateAndUpload,
           );
   }
 
@@ -181,21 +201,42 @@ class _AddProductState extends State<AddProduct>
           );
   }
 
-  Expanded buildExpanded() {
+  Expanded buildExpanded(int index) {
     return Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: OutlineButton(
-                  borderSide: BorderSide(color: grey.withOpacity(0.5), width:  2.5),
-                  onPressed: (){},
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 8.0),
-                    child: Container(width: 80, height: 150.0
-                        ,child: Icon(Icons.add, color: grey,)),
+              child: FittedBox(
+                fit: BoxFit.fill,
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: OutlineButton(
+                    borderSide: BorderSide(color: grey.withOpacity(0.5), width:  2.5),
+                    onPressed: (){
+                      _askPermission(index);
+                    },
+                    child: buildSelectorContent(index),
                   ),
                 ),
               ),
             );
+  }
+
+  Padding buildSelectorContent(int index)
+  {
+    if(_images[index] == null)
+      return buildPickIcon();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 8.0),
+      child: Container(
+        height: 300, width: 150,
+          child: Image.file(_images[index], fit: BoxFit.fill,),)
+    );
+  }
+
+  Padding buildPickIcon() {
+    return Padding(
+                padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 8.0),
+                child: Container(width: 80, height: 150.0
+                    ,child: Icon(Icons.add, color: grey,)),
+              );
   }
 
   AppBar buildAppBar() {
@@ -272,6 +313,79 @@ class _AddProductState extends State<AddProduct>
         setState(() {
           selectedSizes.add(size);
 
+        });
+      }
+  }
+
+  void _selectImage(Future<File> pickImage, int index) async
+  {
+    File image = await pickImage;
+    setState(()
+    {
+      _images[index] = image;
+    });
+  }
+
+  void _askPermission(int index) async
+  {
+
+    Map<PermissionGroup, PermissionStatus> permissions = await PermissionHandler().requestPermissions([PermissionGroup.storage]);
+    _selectImage(ImagePicker.pickImage(source: ImageSource.gallery), index);
+  }
+
+  void _validateAndUpload() async
+  {
+    if(_formKey.currentState.validate())
+      {
+        setState(() {
+          isLoading = true;
+        });
+        bool allselected = true;
+        for(int i=0; i < 3; i++) {
+          if(_images[i] == null) {
+            print('image$i: is null');
+            allselected = false;
+            break;
+          }
+        }
+        if(allselected)
+          {
+            if(selectedSizes.isNotEmpty)
+              {
+                List<String> urls = <String>[];
+                final FirebaseStorage storage = FirebaseStorage.instance;
+                for(int i=0; i < 3; i++)
+                  {
+                    var id = Uuid();
+                    String picID = '${id.v1()}.jpg';
+                    StorageUploadTask task = storage.ref().child(picID).putFile(_images[i]);
+                    StorageTaskSnapshot snap = await task.onComplete.then((snapshot)=>snapshot);
+                    String url = await snap.ref.getDownloadURL();
+                    urls.add(url);
+                  }
+                _productService.createProduct({
+                  "name":_name.text,
+                  "price":double.parse(_price.text),
+                  "sizes":selectedSizes,
+                  "picture":urls,
+                  "quantity":int.parse(_quantity.text),
+                  "brand":_currentBrand,
+                  "category":_currentCategory
+                });
+                Fluttertoast.showToast(msg: 'Product added');
+                // _formKey.currentState.reset();
+              }
+            else
+              {
+                Fluttertoast.showToast(msg: 'select at least one size.');
+              }
+          }
+        else
+          {
+            Fluttertoast.showToast(msg: 'select all image.');
+          }
+        setState(() {
+          isLoading = false;
         });
       }
   }
