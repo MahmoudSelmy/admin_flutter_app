@@ -1,3 +1,4 @@
+import 'package:admin_flutter_app/screens/add_products.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import '../db/category.dart';
@@ -192,7 +193,9 @@ class _AdminState extends State<Admin> {
             ListTile(
               leading: Icon(Icons.add),
               title: Text("Add product"),
-              onTap: () {},
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_)=> AddProduct()));
+              },
             ),
             Divider(),
             ListTile(
@@ -247,6 +250,7 @@ class _AdminState extends State<Admin> {
             if(value.isEmpty){
               return 'category cannot be empty';
             }
+            return null;
           },
           decoration: InputDecoration(
               hintText: "add category"
@@ -281,6 +285,7 @@ class _AdminState extends State<Admin> {
             if(value.isEmpty){
               return 'category cannot be empty';
             }
+            return null;
           },
           decoration: InputDecoration(
               hintText: "add brand"
@@ -303,5 +308,10 @@ class _AdminState extends State<Admin> {
     );
 
     showDialog(context: context, builder: (_) => alert);
+  }
+
+  bool validateCategory(String category)
+  {
+    return category.isNotEmpty;
   }
 }

@@ -33,6 +33,7 @@ dependencies:
   cached_network_image:
   intl:
   uuid:
+  image_picker:
 
 dev_dependencies:
   flutter_test:
