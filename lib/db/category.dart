@@ -19,4 +19,13 @@ class CategoryService{
       return snap.documents;
     });
   }
+  Future getSuggestions(String suggestion)
+  {
+    return _firestore.collection(ref)
+        .where('category', isEqualTo: suggestion)
+        //.where('category', isGreaterThanOrEqualTo: suggestion)
+        .getDocuments().then((snap){
+      return snap.documents;
+    });
+  }
 }

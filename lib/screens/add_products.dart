@@ -2,6 +2,8 @@ import 'package:admin_flutter_app/db/brand.dart';
 import 'package:admin_flutter_app/db/category.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_typeahead/flutter_typeahead.dart';
+
 
 class AddProduct extends StatefulWidget {
   @override
@@ -17,6 +19,7 @@ class _AddProductState extends State<AddProduct>
 
   GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   TextEditingController _name = TextEditingController();
+  TextEditingController _quantity = TextEditingController();
 
   List<DocumentSnapshot> brands = <DocumentSnapshot>[];
   List<DocumentSnapshot> categories = <DocumentSnapshot>[];
@@ -24,12 +27,13 @@ class _AddProductState extends State<AddProduct>
   List<DropdownMenuItem<String>> categoriesList = <DropdownMenuItem<String>>  [];
   List<DropdownMenuItem<String>> brandsList = <DropdownMenuItem<String>>  [];
 
-  String _currentCategory = "Category";
-  String _currentBrand = "Brand";
+  String _currentCategory;
+  String _currentBrand;
 
   CategoryService _categoryService = CategoryService();
   BrandService _brandService = BrandService();
 
+  List<String> selectedSizes = <String>[];
   @override
   void initState() {
     // TODO: implement initState
@@ -45,7 +49,7 @@ class _AddProductState extends State<AddProduct>
       appBar: buildAppBar(),
       body: Form(
         key: _formKey,
-        child: ListView(
+        child: Column(
           children: <Widget>[
             Row(
               children: <Widget>[
@@ -54,35 +58,122 @@ class _AddProductState extends State<AddProduct>
                 buildExpanded(),
               ],
             ),
-            buildNameTextField(),
-            buildSelector(categoriesList, _currentCategory, changeSelectedCategory),
-            buildSelector(brandsList, _currentBrand, changeSelectedBrand),
+            buildNameTextField('Product Name.', TextInputType.text, _name),
+            Row(
+              children: <Widget>[
+                buildSelector('Category : ', categoriesList, _currentCategory, changeSelectedCategory),
+                buildSelector('Brand    : ', brandsList, _currentBrand, changeSelectedBrand),
+              ],
+            ),
+            buildNameTextField('Quantity.', TextInputType.numberWithOptions(), _quantity),
+            Text('Available Sizes', style: TextStyle(color: red, fontWeight: FontWeight.bold),),
+            Row(
+              children: <Widget>[
+                buildCheckSize('XS'), Text('XS'),
+                buildCheckSize('S'), Text('S'),
+                buildCheckSize('M'), Text('M'),
+                buildCheckSize('L'), Text('L'),
+                buildCheckSize('XL'), Text('XL'),
+                buildCheckSize('XXL'), Text('XXL'),
+              ],
+            ),
+            buildAddButton()
           ],
         ),
       ),
     );
   }
 
-  Center buildSelector(List<DropdownMenuItem<String>> items, String value, Function onChange) {
-    return Center(
-            child: DropdownButton(
-              items: items,
-              value: value,
-              onChanged: onChange,
+  Checkbox buildCheckSize(String size) => Checkbox(value: selectedSizes.contains(size), onChanged: (value)=>changeSelectedSize(size), activeColor: red,);
+
+  FlatButton buildAddButton() {
+    return FlatButton(
+            color: red,
+            textColor: white,
+            child: Text('Add product'),
+            onPressed: (){},
+          );
+  }
+
+  Future<TypeAheadField> buildTypeAheadField() async {
+    return TypeAheadField(
+            textFieldConfiguration: TextFieldConfiguration(
+                autofocus: false,
+                decoration: InputDecoration(
+                  hintText: 'Category'
+                )
+            ),
+            suggestionsCallback: (pattern) async {
+              return await _categoryService.getSuggestions(pattern);
+            },
+            itemBuilder: (context, suggestion) {
+              return ListTile(
+                leading: Icon(Icons.category),
+                title: Text(suggestion['category']),
+                subtitle: Text('\$${suggestion['price']}'),
+              );
+            },
+            onSuggestionSelected: (suggestion) {
+              setState(() {
+                _currentCategory = suggestion['category'];
+              });
+            },
+          );
+  }
+
+  Padding buildCategoryVisibility() {
+    return Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Visibility(
+              visible: _currentCategory != null,
+              child: InkWell(
+                child: Material(
+                  borderRadius: BorderRadius.circular(20),
+                  color: red,
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(_currentCategory??'Category name', style: TextStyle(color: white),),
+                      ),
+                      IconButton(icon: Icon(Icons.close, color: white,),onPressed: (){
+                        setState(() {
+                          _currentCategory = null;
+                        });
+                      },)
+                    ],
+                  ),
+                ),
+              ),
             ),
           );
   }
 
-  Padding buildNameTextField() {
+  Expanded buildSelector(String label, List<DropdownMenuItem<String>> items, String value, Function onChange) {
+    return Expanded(
+      child: Row(
+              children: <Widget>[
+                Text(label, style: TextStyle(color: red),),
+                DropdownButton(
+                  items: items,
+                  value: value,
+                  onChanged: onChange,
+                )
+              ],
+            ),
+    );
+  }
+
+  Padding buildNameTextField(String hint, TextInputType keyboard, TextEditingController controller) {
     return Padding(
-            padding: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(12.0),
             child: TextFormField(
-              controller: _name,
-              decoration: InputDecoration(hintText: 'Product name'),
+              controller: controller,
+              keyboardType: keyboard,
+              decoration: InputDecoration(hintText: hint),
               validator: (value){
                 if(value.isEmpty)
                   {
-                    return "Product name can not be empty";
+                    return hint + " can not be empty";
                   }
                 return null;
               },
@@ -98,8 +189,9 @@ class _AddProductState extends State<AddProduct>
                   borderSide: BorderSide(color: grey.withOpacity(0.5), width:  2.5),
                   onPressed: (){},
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(8.0, 16.0, 8.0, 16.0),
-                    child: Icon(Icons.add, color: grey,),
+                    padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 8.0),
+                    child: Container(width: 80, height: 150.0
+                        ,child: Icon(Icons.add, color: grey,)),
                   ),
                 ),
               ),
@@ -165,5 +257,22 @@ class _AddProductState extends State<AddProduct>
     setState(() {
       _currentBrand = selected;
     });
+  }
+
+  void changeSelectedSize(String size)
+  {
+    if(selectedSizes.contains(size))
+      {
+        setState(() {
+          selectedSizes.remove(size);
+        });
+      }
+    else
+      {
+        setState(() {
+          selectedSizes.add(size);
+
+        });
+      }
   }
 }
